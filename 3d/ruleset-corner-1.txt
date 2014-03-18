@@ -1,0 +1,11 @@
+Considers the entire 3x3 cube that surrounds the current block.
+
+Under this ruleset, the survival conditions are as follows:
+Less than 4 blocks: isolation.
+Less than 8 blocks: survival.
+Less than 12 blocks: birth.
+Otherwise: overcrowding.
+
+This ruleset appears to have a big problem: random soups as well as cubes over 9 blocks to a side
+appear to go on forever. Likewise, random soups tend to smooth out into spheres and go on forever
+rather than disintegrate, which is the expected behaviour.

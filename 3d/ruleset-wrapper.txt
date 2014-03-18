@@ -1,0 +1,9 @@
+The wrapper ruleset takes considers only those blocks that "wrap" around the current one as neighbours.
+A consequence of this is that a neighbour is at most 2 blocks away. It also means that the corners of the extended, 3x3 cube,
+are neglected. We believe this limits diagonal possibilities.
+
+Under this ruleset, the survival conditions are as follows.
+Less than 4 neighbours: isolation
+Less than 6 neighbours: survival
+Less than 8 neighbours: birth
+otherwise: overcrowding.

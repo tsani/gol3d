@@ -66,32 +66,6 @@ class GeneralCornerRuleset implements Ruleset
     }
 }
 
-class Cell
-{
-    public Cell(boolean a_alive, Point a_position)
-    {
-        alive = a_alive;
-        position = a_position;
-        age = 1;
-    }
-
-    public Cell(Point a_position)
-    {
-        position = a_position;
-        alive = true;
-        age = 1;
-    }
-
-    public void update()
-    {
-		age++;
-    }
-
-    public boolean alive;
-    public Point position;
-    public int age;
-}
-
 public class LifeGame
 {
     public static LifeGame fromFile(InputStream data)
@@ -225,6 +199,28 @@ public class LifeGame
         return state.size() != 0;
     }
 
+    public void addCell(Cell c)
+    {
+        state.put(c.position, c);
+    }
+
+    public void removeCellAt(Point p)
+    {
+        state.remove(p);
+    }
+
+    public Collection<Cell> getCellDump()
+    {
+        HashSet<Cell> dump = new HashSet<Cell>();
+
+        for(Cell c : state.values())
+        {
+            dump.add(c.clone());
+        }
+
+        return dump;
+    }
+
     public void update()
     {
         HashMap<Point, Integer> neighbours = new HashMap<Point, Integer>();
@@ -326,6 +322,8 @@ public class LifeGame
             newState.put(c.position, c);
         }
 
+        botRight = abs(botRight).subtract(mn);
+
         topLeft = mn;
 
         state = newState;
@@ -336,11 +334,16 @@ public class LifeGame
         return topLeft;
     }
 
+    public Point getDimensions()
+    {
+        return botRight;
+    }
+
     public int[][][] get()
     {
         int[][][] grid;
 
-        Point dim = botRight.subtract(topLeft).add(new Point(1, 1, 1));
+        Point dim = botRight.add(new Point(1, 1, 1));
 
         grid = new int[dim.x][dim.y][dim.z]; // the initial grid is filled with zeroes.
 

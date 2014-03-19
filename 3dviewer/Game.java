@@ -1,4 +1,5 @@
 import java.io.*;
+import java.util.*;
 
 import org.lwjgl.Sys;
 import org.lwjgl.input.Keyboard;
@@ -17,24 +18,29 @@ import javax.swing.JOptionPane;
 
 class GameUpdater implements Runnable
 {
-    private int[][][] grid;
     private LifeGame game;
+    private boolean copyFinished;
 
     public GameUpdater(LifeGame g)
     {
         game = g;
+        copyFinished = false;
     }
 
     @Override
     public void run()
     {
         game.update();
-        grid = game.get();
     }
 
-    public int[][][] getGrid()
+    public boolean isCopyFinished()
     {
-        return grid;
+        return copyFinished;
+    }
+
+    public void setCopyFinished(boolean v)
+    {
+        copyFinished = v;
     }
 }
 
@@ -53,48 +59,75 @@ class GameManager
 	};
 
     private LifeGame game;
-    private int[][][] grid;
+    private Collection<Cell> cells;
     private GameUpdater updater;
     private Thread updater_t;
-
-    public GameManager(InputStream data)
-    {
-        game = LifeGame.fromFile(data);
-        grid = game.get();
-
-        updater = new GameUpdater(game);
-        updater_t = new Thread(updater);
-
-        updater_t.start();
-    }
 
 	public GameManager(LifeGame initial)
 	{
 		game = initial;
-		grid = game.get();
 
+        cells = game.getCellDump();
         updater = new GameUpdater(game);
+        updater.setCopyFinished(true);
         updater_t = new Thread(updater);
-
-        updater_t.start();
 	}
+
+    public Point getDimensions() // TODO rather than have silly functions like this, we should probably make GameManager subclass LifeGame
+    {
+        return game.getDimensions();
+    }
+
+    public Point getOrigin()
+    {
+        return game.getOrigin();
+    }
+
+    public void updateGame()
+    {
+        if(updater_t.isAlive() || !updater.isCopyFinished())
+            return;
+
+        updater.setCopyFinished(false);
+        updater_t = new Thread(updater);
+        updater_t.start();
+    }
 
     public void update()
     {
-        if(updater_t.isAlive())
-        {
-            System.err.printf("Updater still hasn't finished!\n");
-        }
-        else
-        {
-            grid = LifeGame.copyGrid(updater.getGrid());
-            updater = new GameUpdater(game);
-            updater_t = new Thread(updater);
-            updater_t.start();
-        }
+        if(updater_t.isAlive() || updater.isCopyFinished())
+            return;
+
+        cells = game.getCellDump();
+
+        updater.setCopyFinished(true);
     }
 
-	private void renderQuad(Point v1, Point v2, Point v3, Point v4)
+    public void addNewCell(Point p)
+    {
+        if(updater_t.isAlive() || !updater.isCopyFinished())
+        {
+            System.err.printf("Can't add cell while update is in progress!\n");
+            return;
+        }
+
+        game.addCell(new Cell(p.subtract(game.getOrigin())));
+        cells = game.getCellDump();
+    }
+
+    public void removeCell(Point p)
+    {
+        if(updater_t.isAlive() || !updater.isCopyFinished())
+        {
+            System.err.printf("Can't remove cell while update is in progress!\n");
+            return;
+        }
+
+        game.removeCellAt(p.subtract(game.getOrigin()));
+        cells = game.getCellDump();
+    }
+
+	private static void renderQuad(Point v1, Point v2, Point v3, Point v4)
 	{
 		GL11.glVertex3i(v4.x * boxLength, v4.y * boxLength, v4.z * boxLength);
 		GL11.glVertex3i(v3.x * boxLength, v3.y * boxLength, v3.z * boxLength);
@@ -102,24 +135,21 @@ class GameManager
 		GL11.glVertex3i(v1.x * boxLength, v1.y * boxLength, v1.z * boxLength);
 	}
 
-	private void renderLine(Point v1, Point v2)
+	private static void renderLine(Point v1, Point v2)
 	{
 		GL11.glVertex3i(v1.x * boxLength, v1.y * boxLength, v1.z * boxLength);
 		GL11.glVertex3i(v2.x * boxLength, v2.y * boxLength, v2.z * boxLength);
 	}
 
-	private void renderBox(Point p, float age)
+	public static void renderBox(Point p, float r, float g, float b)
 	{
-		GL11.glColor3f(1.0f / age, 1.0f / age, 1.0f);
+		GL11.glColor3f(r, g, b);
 		GL11.glBegin(GL11.GL_QUADS);
-			for(int i = boxOffsets.length - 1; i >= 0; i--)
-			{
-				Point[] ps = boxOffsets[i];
+			for(Point[] ps : boxOffsets) // this used to be a reversed for loop
 				renderQuad(p.add(ps[0]), p.add(ps[1]), p.add(ps[2]), p.add(ps[3]));
-			}
 		GL11.glEnd();
 
-		GL11.glColor3f(0.5f, 0.5f, 0.5f);
+		GL11.glColor3f(0.2f, 0.2f, 0.2f);
 		for(Point[] ps : boxOffsets)
 		{
 			GL11.glBegin(GL11.GL_LINES);
@@ -131,39 +161,27 @@ class GameManager
 		}
 	}
 
-	public int getStructX()
-	{
-		return grid.length;
-	}
+    public Point toGridCoords(float x, float y, float z)
+    {
+        int x_ = (int)Math.floor(x / boxLength);
+        int y_ = (int)Math.floor(y / boxLength);
+        int z_ = (int)Math.floor(z / boxLength);
 
-	public int getStructY()
-	{
-		return grid[0].length;
-	}
+        Point p_ = new Point(x_, y_, z_);
 
-	public int getStructZ()
+        return p_;
+    }
+
+	private void renderCellBox(Point p, float age)
 	{
-		return grid[0][0].length;
+        renderBox(p, 1.0f / age, 1.0f / age, 1.0f);
 	}
 
     public void render()
     {
-        if(grid == null)
-            return;
-        for(int x = 0; x < grid.length; x++)
+        for(Cell c : cells)
         {
-            for(int y = 0; y < grid[0].length; y++)
-            {
-                for(int z = 0; z < grid[0][0].length; z++)
-                {
-					float age = (float)(grid[x][y][z]);		
-
-                    if(age == 0)
-                        continue;
-					
-					renderBox(game.getOrigin().add(new Point(x, y, z)), age);
-                }
-            }
+            renderCellBox(game.getOrigin().add(c.position), c.age);
         }
     }
 }
@@ -180,6 +198,8 @@ public class Game
 
     private static boolean autoUpdateMode = false;
 	private static boolean spinMode       = false;
+    private static boolean editMode       = false;
+    private static float   editArmLength  = 200f;
 	private static float   spinSpeed      = 0.15f;
 
     private static long frameN = 0;
@@ -187,16 +207,21 @@ public class Game
     /** Exit the game */
     private static boolean finished;
  
+    public static final float maxSpeed = 40;
+    public static final float minSpeed = 10;
+
     private static float eyeX   = 0, 
                          eyeY   = 0, 
                          eyeZ   = -20, 
                          theta  = 0,
                          phi    = 0,
                          radius = 200,
-                         speed  = 50; // percentage of radius
+                         speed  = maxSpeed; 
 
-    private static int w = 1024, h = 768;
+    private static int w = 1024, h = 600;
     private static int lastMouseX = 0, lastMouseY = 0;
+
+    private static Point cellCursor = new Point();
 
     // shaders get stored in here... somehow.
     private static int program = 0;
@@ -214,7 +239,7 @@ public class Game
             if(args.length > 0)
             {
                 if(args[0].equals("-")) // allow specifying a file on the command line. If that file is '-', then allow reading from stdin
-                    gm = new GameManager(System.in);
+                    gm = new GameManager(LifeGame.fromFile(System.in));
 				else if(args[0].equals("-random"))
 				{
 					if(args.length == 3)
@@ -242,18 +267,24 @@ public class Game
                     }
                     else
                     {
-                        JOptionPane.showMessageDialog(null, "Invalid prism configuration options. Exiting...", "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, 
+                                                      "Invalid prism configuration options. Exiting...", 
+                                                      "Fatal Error", 
+                                                      JOptionPane.ERROR_MESSAGE);
                     }
                 }
                 else
                 {
                     try
                     {
-                        gm = new GameManager(new FileInputStream(args[0]));
+                        gm = new GameManager(LifeGame.fromFile(new FileInputStream(args[0])));
                     }
                     catch(FileNotFoundException e)
                     {
-                        JOptionPane.showMessageDialog(null, "File not found: " + e.getMessage(), "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, 
+                                                      "File not found: " + e.getMessage(), 
+                                                      "Fatal Error", 
+                                                      JOptionPane.ERROR_MESSAGE);
                         System.exit(1);
                     }
                 }
@@ -268,17 +299,23 @@ public class Game
                     try
                     {
                         FileInputStream fis = new FileInputStream(fc.getSelectedFile());
-                        gm = new GameManager(fis);
+                        gm = new GameManager(LifeGame.fromFile(fis));
                     }
                     catch(FileNotFoundException e)
                     {
-                        JOptionPane.showMessageDialog(null, "File not found: " + e.getMessage(), "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(null, 
+                                                      "File not found: " + e.getMessage(), 
+                                                      "Fatal Error", 
+                                                      JOptionPane.ERROR_MESSAGE);
                         System.exit(1);
                     }
                 }
                 else
                 {
-                    JOptionPane.showMessageDialog(null, "No pattern specified. Exiting...", "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(null, 
+                                                  "No pattern specified. Exiting...", 
+                                                  "Fatal Error", 
+                                                  JOptionPane.ERROR_MESSAGE);
                     System.exit(1);
                 }
             }
@@ -289,7 +326,10 @@ public class Game
         catch (Exception e) 
         {
             e.printStackTrace(System.err);
-            Sys.alert(GAME_TITLE, "An error occured and the game will exit.");
+            JOptionPane.showMessageDialog(null, 
+                                          "A fatal error occured and the program will exit.", 
+                                          "Fatal Error", 
+                                          JOptionPane.ERROR_MESSAGE);
         } 
         finally 
         {
@@ -309,7 +349,7 @@ public class Game
         {
             Display.setDisplayMode(new DisplayMode(w, h));
             Display.setVSyncEnabled(true);
-            Display.setTitle("Shader Setup");
+            Display.setTitle(GAME_TITLE);
             Display.create();
             Mouse.create();
             Cursor emptyCursor = new Cursor(1, 1, 0, 0, 1, BufferUtils.createIntBuffer(1), null);
@@ -432,8 +472,6 @@ public class Game
             return;
         }
 
-//        Keyboard.poll();
-
         while(Keyboard.next())
         {
             int key = Keyboard.getEventKey();
@@ -452,7 +490,7 @@ public class Game
 							try
 							{
 								FileInputStream fis = new FileInputStream(fc.getSelectedFile());
-								gm = new GameManager(fis);
+								gm = new GameManager(LifeGame.fromFile(fis));
 								autoUpdateMode = false;
 							}
 							catch(FileNotFoundException e)
@@ -467,14 +505,50 @@ public class Game
 					case Keyboard.KEY_1:
 						spinMode = !spinMode;
 						break;
+                    case Keyboard.KEY_B:
+                        editMode = !editMode;
+                        System.err.printf("Edit mode: %s\n", new Boolean(editMode).toString());
+                        break;
 					case Keyboard.KEY_SPACE:
-						gm.update();
+						gm.updateGame();
 						break;
+                    case Keyboard.KEY_LSHIFT:
+                        speed = maxSpeed;
+                        break;
 				}
 			}
+            else
+            {
+                switch (key)
+                {
+                    case Keyboard.KEY_LSHIFT:
+                        speed = minSpeed;
+                        break;
+                }
+            }
 		}
 
+        while(Mouse.next())
+        {
+            boolean buttonstate = Mouse.getEventButtonState();
+            int     mousebutton = Mouse.getEventButton();
 
+            if(!buttonstate) // button is released
+            {
+                switch(mousebutton)
+                {
+                    case 0: // left !
+                        gm.addNewCell(cellCursor);
+                        break;
+                    case 1: // right !
+                        gm.removeCell(cellCursor);
+                        break;
+                    case 2: // centre !
+                        //System.err.printf("Mouse button 2 pressed.\n");
+                        break;
+                }
+            }
+        }
 
 		if(spinMode)
 		{
@@ -497,7 +571,12 @@ public class Game
 					else if(theta < 0f)
 						theta += (float)Math.PI * 2f;
 
+                    //System.err.printf("Theta = %f\n", theta);
 				}
+                if(mdy != 0.0f)
+                {
+                    //System.err.printf("Phi = %f\n", phi);
+                }
 			}
 
 			if (Keyboard.isKeyDown(Keyboard.KEY_Q))
@@ -508,15 +587,17 @@ public class Game
 			{
 				eyeY += speed;
 			}
+
+            // Side to side movement is just forwards/backwards movement with the trig functions switched
 			if (Keyboard.isKeyDown(Keyboard.KEY_A))
 			{
-				eyeX += speed * Math.sin(theta + Math.PI / 2);
-				eyeZ += speed * Math.cos(theta + Math.PI / 2);
+				eyeZ += speed * Math.cos(theta + Math.PI / 2.0);
+				eyeX += speed * Math.sin(theta + Math.PI / 2.0);
 			}
 			if (Keyboard.isKeyDown(Keyboard.KEY_D))
 			{
-				eyeX -= speed * Math.sin(theta + Math.PI / 2);
-				eyeZ -= speed * Math.cos(theta + Math.PI / 2);
+				eyeZ -= speed * Math.cos(theta + Math.PI / 2.0);
+				eyeX -= speed * Math.sin(theta + Math.PI / 2.0);
 			}
 			if (Keyboard.isKeyDown(Keyboard.KEY_W))
 			{
@@ -532,22 +613,25 @@ public class Game
 			}
 		}
 
-
-		if(Display.isActive())
+		if(Display.isActive()) // Only centre the mouse if the window is focused!
 			Mouse.setCursorPosition(w / 2, h / 2);
 
-        if(phi > (float)Math.PI / 2)
+        if(phi > (float)Math.PI / 2) // just making sure phi isn't allowed to go round and round
             phi = (float)Math.PI / 2f;
         else if(phi < -(float)Math.PI / 2f)
             phi = -(float)Math.PI / 2f;
 
+        cellCursor = gm.toGridCoords(eyeX + editArmLength * (float)Math.sin(theta), eyeY + editArmLength * (float)Math.sin(phi), eyeZ + editArmLength * (float)Math.cos(theta));
+
         if (autoUpdateMode)
         {
             if(frameN % autoUpdateRate == 0)
-                gm.update();
+                gm.updateGame();
         }
 
 		frameN++;
+
+        gm.update();
     }
  
     /**
@@ -562,9 +646,11 @@ public class Game
 
 		if(spinMode)
 		{
-			float structCentreX = gm.getStructX() / 2 * GameManager.boxLength;
-			float structCentreY = gm.getStructY() / 2 * GameManager.boxLength;
-			float structCentreZ = gm.getStructZ() / 2 * GameManager.boxLength;
+            Point dim = gm.getDimensions();
+            Point origin = gm.getOrigin();
+			float structCentreX = (float)origin.x + (float)dim.x / 2f * GameManager.boxLength;
+			float structCentreY = (float)origin.y + (float)dim.y / 2f * GameManager.boxLength;
+			float structCentreZ = (float)origin.z + (float)dim.z / 2f * GameManager.boxLength;
 
 			float distX = eyeX - structCentreX;
 			float distY = eyeY - structCentreY;
@@ -573,12 +659,17 @@ public class Game
 			float structDistance = (float)Math.sqrt(distX * distX + distY * distY + distZ * distZ);
 			Point structCentre = new Point();
 			GLU.gluLookAt(structDistance * (float)Math.cos(theta), eyeY, structDistance * (float)Math.sin(theta), 
-						  gm.getStructX() / 2 * GameManager.boxLength, gm.getStructY() / 2 * GameManager.boxLength, gm.getStructZ() / 2 * GameManager.boxLength, 
+						  structCentreX, structCentreY, structCentreZ,
 						  0, 1, 0);
 		}
 		else
 			GLU.gluLookAt(eyeX, eyeY, eyeZ, eyeX + radius * (float)Math.sin(theta), eyeY + radius * (float)Math.sin(phi), eyeZ + radius * (float)Math.cos(theta), 0, 1, 0);
  
+        if(editMode)
+        {
+            GameManager.renderBox(cellCursor, 0.5f, 1.0f, 0.5f);
+        }
+
         gm.render();
  
         GL11.glPopMatrix();

@@ -76,7 +76,7 @@ public class LifeGame
 
         fscan = new Scanner(data);
 
-        int x, y, z;
+        int x, y, z, age;
         String line;
 
         while(fscan.hasNextLine())
@@ -95,10 +95,73 @@ public class LifeGame
             y = lscan.nextInt();
             z = lscan.nextInt();
 
-            cs.add(new Cell(new Point(x, y, z)));
+            if(lscan.hasNext())
+                age = lscan.nextInt();
+            else
+                age = 1;
+
+            cs.add(new Cell(new Point(x, y, z), age));
         }
 
         return new LifeGame(cs);
+    }
+
+    public static ArrayList<ArrayList<Cell>> fromRecording(InputStream data)
+    {
+        ArrayList<ArrayList<Cell>> states = new ArrayList<ArrayList<Cell>>();
+        ArrayList<Cell> cs = new ArrayList<Cell>();
+
+        Scanner fscan, lscan;
+
+        fscan = new Scanner(data);
+
+        int x, y, z, age;
+        String line;
+
+        while(fscan.hasNextLine())
+        {
+            line = fscan.nextLine();
+
+            if(line.length() == 0) // empty line support
+                continue;
+            else if(line.charAt(0) == ';' || line.charAt(0) == '#') // comment support.
+                continue;
+            else if(line.equals("---")) // frame separator
+            {
+                if(cs.size() == 0)
+                {
+                    System.err.printf("Refusing to add empty frame.");
+                }
+                else
+                {
+                    states.add(cs);
+                    cs = new ArrayList<Cell>(); // new instead of clear, otherwise we'll erase previous data ! (References yo!)
+                }
+
+                continue;
+            }
+
+            lscan = new Scanner(line);
+
+            // these calls may throw. The caller must take care of this.
+            x = lscan.nextInt();
+            y = lscan.nextInt();
+            z = lscan.nextInt();
+
+            if(lscan.hasNext())
+                age = lscan.nextInt();
+            else
+                age = 1;
+
+            cs.add(new Cell(new Point(x, y, z), age));
+        }
+
+        if(cs.size() > 0)
+            states.add(cs);
+
+        System.err.printf("Read in %d frames from recording.\n", states.size());
+
+        return states;
     }
 
     public static LifeGame fromRandom(int dataNumber, int range)
@@ -174,20 +237,27 @@ public class LifeGame
     int n; // iteration number
     Ruleset ruleset;
 
+    public LifeGame()
+    {
+        topLeft = new Point();
+        botRight = new Point();
+        state = new HashMap<Point, Cell>();
+
+        ruleset = new GeneralCornerRuleset(6, 6, 7, 5);
+    }
+
+    /** Produce a LifeGame from a list of cells, the positions of which are taken to be absolute, 
+     * i.e. relative to (0, 0, 0).
+     * @param cs The initial cells that the LifeGame should consist of.
+     */
     public LifeGame(List<Cell> cs)
     {
-        topLeft = cs.get(0).position;
-        botRight = cs.get(0).position;
-
         state = new HashMap<Point, Cell>();
 
         for (Cell c : cs)
-        {
             state.put(c.position, c);
 
-            topLeft = topLeft.min(c.position);
-            botRight = botRight.max(c.position);
-        }
+        topLeft = new Point(0, 0, 0);
 
         adjustBounds();
 
@@ -215,7 +285,9 @@ public class LifeGame
 
         for(Cell c : state.values())
         {
-            dump.add(c.clone());
+            Cell c_ = c.clone();
+            c_.position = abs(c_.position);
+            dump.add(c_);
         }
 
         return dump;
@@ -326,6 +398,8 @@ public class LifeGame
 
         topLeft = mn;
 
+        System.err.printf("New origin at (%s).\n", mn.toString());
+
         state = newState;
     }
 
@@ -358,22 +432,26 @@ public class LifeGame
 
     public String toString()
     {
-        String s = "";
+        StringBuilder sb = new StringBuilder();
 
         for(Cell c : state.values())
         {
-            s += c.position.toString();
-            s += "\n";
+            sb.append(abs(c.position).toString());
+            sb.append(' ');
+            sb.append(c.age);
+            sb.append('\n');
         }
 
-        return s;
+        return sb.toString();
     }
 
+    /** Calculates the relative version of a point given absolutely. */
     public Point rel(Point p)
     {
         return p.subtract(topLeft);
     }
 
+    /** Calculates the absolute version of a point given relatively. */
     public Point abs(Point p)
     {
         return p.add(topLeft);

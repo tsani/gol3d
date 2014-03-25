@@ -44,26 +44,300 @@ class GameUpdater implements Runnable
     }
 }
 
-class GameManager
+class Face
 {
     public static final int boxLength = 50;
+
+    public static Point toGridCoords(float x, float y, float z)
+    {
+        int x_ = (int)Math.floor(x / boxLength);
+        int y_ = (int)Math.floor(y / boxLength);
+        int z_ = (int)Math.floor(z / boxLength);
+
+        Point p_ = new Point(x_, y_, z_);
+
+        return p_;
+    }
+
+    private Point[] vertices;
+    private float r, g, b;
+
+    public Face(Point[] vertices, float r, float g, float b)
+    {
+        this.vertices = vertices;
+        this.r = r;
+        this.g = g;
+        this.b = b;
+    }
+
+    public void renderFace()
+    {
+        GL11.glColor3f(r, g, b);
+        GL11.glBegin(GL11.GL_POLYGON);
+            GL11.glVertex3i(vertices[3].x * boxLength, vertices[3].y * boxLength, vertices[3].z * boxLength);
+            GL11.glVertex3i(vertices[2].x * boxLength, vertices[2].y * boxLength, vertices[2].z * boxLength);
+            GL11.glVertex3i(vertices[1].x * boxLength, vertices[1].y * boxLength, vertices[1].z * boxLength);
+            GL11.glVertex3i(vertices[0].x * boxLength, vertices[0].y * boxLength, vertices[0].z * boxLength);
+        GL11.glEnd();
+    }
+
+    public void renderBorder()
+    {
+        GL11.glColor3f(0.2f, 0.2f, 0.2f);
+        GL11.glBegin(GL11.GL_LINE_LOOP);
+            GL11.glColor3f(0.2f, 0.2f, 0.2f);
+            for(int i = 0; i < vertices.length; i++)
+                GL11.glVertex3i(vertices[i].x * boxLength, vertices[i].y * boxLength, vertices[i].z * boxLength);
+        GL11.glEnd();
+    }
+
+    public void move(Point distance)
+    {
+        for(int i = 0; i < vertices.length; i++)
+            vertices[i] = vertices[i].add(distance);
+    }
+
+    @Override 
+    public int hashCode()
+    {
+        int ret = 1;
+        for(Point p : vertices)
+            ret *= p.hashCode();
+        return ret;
+    }
+
+    @Override
+    public boolean equals(Object f_)
+    {
+        Face f = (Face)f_;
+
+        List<Point> thisP = Arrays.asList(vertices);
+        List<Point> thoseP = Arrays.asList(f.vertices);
+
+        for(Point p : thisP)
+            if(!thoseP.contains(p))
+                return false;
+
+        for(Point p : thoseP)
+            if(!thisP.contains(p))
+                return false;
+
+        return true;
+    }
+
+    public String toString()
+    {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append(vertices[0].toString());
+
+        for(int i = 1; i < vertices.length; i++)
+        {
+            sb.append('-');
+            sb.append(vertices[i].toString());
+        }
+
+        return sb.toString();
+    }
+}
+
+interface GameMode
+{
+    public void updateGame();
+    public void update();
+    public void render();
+}
+
+abstract class GameManager implements GameMode
+{
 	public static final float lineWidth = 2.0f;
 
-	public static final Point[][] boxOffsets = { // these are offsets to apply to a point XYZ to make a box
+	private static final Point[][] boxOffsets = 
+    { // these are offsets to apply to a point XYZ to make a box
 		{new Point(0, -1, -1), new Point(1, -1, -1), new Point(1, -1, 0),  new Point(0, -1, 0)}, 
 		{new Point(1, 0, 0),   new Point(1, 0, -1),  new Point(1, -1, -1), new Point(1, -1, 0)},
-		{new Point(0, 0, -1),  new Point(1, 0, -1), new Point(1, 0, 0), new Point(0, 0, 0)},
-		{new Point(0, 0, -1),  new Point(1, 0, -1), new Point(1, -1, -1), new Point(0, -1, -1)},
-		{new Point(0, 0, 0), new Point(0, 0, -1), new Point(0, -1, -1), new Point(0, -1, 0)},
-		{new Point(0, 0, 0), new Point(1, 0, 0), new Point(1, -1, 0), new Point(0, -1, 0)}
+		{new Point(0, 0, -1),  new Point(1, 0, -1),  new Point(1, 0, 0),   new Point(0, 0, 0)},
+		{new Point(0, 0, -1),  new Point(1, 0, -1),  new Point(1, -1, -1), new Point(0, -1, -1)},
+		{new Point(0, 0, 0),   new Point(0, 0, -1),  new Point(0, -1, -1), new Point(0, -1, 0)},
+		{new Point(0, 0, 0),   new Point(1, 0, 0),   new Point(1, -1, 0),  new Point(0, -1, 0)}
 	};
+
+	public static void renderBox(Point p, float r, float g, float b)
+	{
+        Face[] faces = getBoxFacesFrom(p, r, g, b);
+
+        for(Face face : faces)
+        {
+            face.renderFace();
+            face.renderBorder();
+        }
+	}
+
+    /** Produces an array of faces that arise from creating a cube originating at a given point.
+     * @param p The origin of the cube to be generated.
+     * @return A two-dimensional array of points whose size is exactly 6x4.
+     */
+    public static Face[] getBoxFacesFrom(Point p, float r, float g, float b)
+    {
+        Face[] faces = new Face[6];
+
+        for(int i = 0; i < boxOffsets.length; i++)
+        {
+            Point[] vertices = new Point[4];
+            for(int j = 0; j < boxOffsets[i].length; j++)
+                vertices[j] = p.add(boxOffsets[i][j]);
+            faces[i] = new Face(vertices, r, g, b);
+        }
+
+        return faces;
+    }
+
+    /** Batch render a bunch of cells by using the optimization of not rendering twice overlapping cell walls.
+     * The color of the cell is determined by its age, whereby age is inversely proportional to redness and greenness.
+     * This abstract class provides this method as static rather than as instance, else this class would be required to decide on a Cell management scheme, whereas such 
+     * a decision should be left up to the derived class.
+     * @param cs The cells to render. Can be null if a_faces is non-null and non-empty.
+     * @param a_faces The faces of the cells to render. If null, then cs must be non-null, and the faces will be computed from cs and returned.
+     * @return The set of faces produced. This value should be stored somewhere and invalidated when the configuration of cells changes. 
+     */
+    public static HashSet<Face> renderCells(Collection<Cell> cs, HashSet<Face> a_faces)
+    {
+        HashSet<Face> faces = a_faces == null ? new HashSet<Face>() : a_faces;
+
+        if(faces.size() == 0)
+            for(Cell c : cs)
+                for(Face face : getBoxFacesFrom(c.position, 1f / c.age, 1f / c.age, 1f))
+                    faces.add(face);
+
+        for(Face face : faces)
+        {
+            face.renderFace();
+            face.renderBorder();
+        }
+
+        return faces;
+    }
+
+    public static HashSet<Face> makeCellFaces(Collection<Cell> cs)
+    {
+        HashSet<Face> faces = new HashSet<Face>();
+
+        for(Cell c : cs)
+            for(Face face : getBoxFacesFrom(c.position, 1f / c.age, 1f / c.age, 1f))
+                faces.add(face);
+
+        return faces;
+    }
+
+    abstract public Point getDimensions();
+    abstract public Point getOrigin();
+    abstract public LifeGame getGame();
+    abstract public void updateGame();
+    abstract public void update();
+    abstract public void render();
+}
+
+class RecordedGameManager extends GameManager
+{
+    private int index;
+    private List<LifeGame> subgames;
+    private List<HashSet<Face>> facesList;
+
+    private static List<HashSet<Face>> makeFaceList(ArrayList<ArrayList<Cell>> states)
+    {
+        ArrayList<HashSet<Face>> faces = new ArrayList<HashSet<Face>>();
+
+        for(Collection<Cell> cs : states)
+            faces.add(makeCellFaces(cs));
+
+        return faces;
+    }
+
+    public RecordedGameManager(ArrayList<ArrayList<Cell>> a_states)
+    {
+        index = 0;
+
+        facesList = makeFaceList(a_states);
+
+        subgames = new ArrayList<LifeGame>();
+
+        System.err.printf("%d sets of faces read in to RecordedGameManager.\n", facesList.size());
+
+        for(List<Cell> cs : a_states)
+            subgames.add(new LifeGame(cs));
+    }
+
+    public RecordedGameManager(ArrayList<ArrayList<Cell>> a_states, int a_index)
+    {
+        index = a_index;
+
+        facesList = makeFaceList(a_states);
+
+        subgames = new ArrayList<LifeGame>();
+
+        for(List<Cell> cs : a_states)
+            subgames.add(new LifeGame(cs));
+    }
+
+    public LifeGame getGame()
+    {
+        return subgames.get(index);
+    }
+
+    public boolean isFinished()
+    {
+        return index == subgames.size() - 1;
+    }
+
+    @Override
+    public Point getDimensions()
+    {
+        return subgames.get(index).getDimensions();
+    }
+
+    @Override 
+    public Point getOrigin()
+    {
+        return subgames.get(index).getOrigin();
+    }
+
+    @Override
+    public void updateGame()
+    {
+        if(isFinished())
+            return;
+
+        index++;
+        System.err.printf("Moving on to frame %d in recording.\n", index + 1);
+    }
+
+    @Override
+    public void update()
+    {
+        // no-op ?
+    }
+
+    @Override
+    public void render()
+    {
+        for(Face f : facesList.get(index))
+        {
+            f.renderFace();
+            f.renderBorder();
+        }
+    }
+}
+
+class LiveGameManager extends GameManager
+{
 
     private LifeGame game;
     private Collection<Cell> cells;
+    private HashSet<Face> facesMemoList;
     private GameUpdater updater;
     private Thread updater_t;
 
-	public GameManager(LifeGame initial)
+	public LiveGameManager(LifeGame initial)
 	{
 		game = initial;
 
@@ -71,18 +345,30 @@ class GameManager
         updater = new GameUpdater(game);
         updater.setCopyFinished(true);
         updater_t = new Thread(updater);
+        
+        facesMemoList = makeCellFaces(cells);
+        adjustFacePositions();
 	}
 
-    public Point getDimensions() // TODO rather than have silly functions like this, we should probably make GameManager subclass LifeGame
+    @Override
+    public Point getDimensions() 
     {
         return game.getDimensions();
     }
 
+    @Override
     public Point getOrigin()
     {
         return game.getOrigin();
     }
 
+    @Override
+    public LifeGame getGame()
+    {
+        return game;
+    }
+
+    @Override
     public void updateGame()
     {
         if(updater_t.isAlive() || !updater.isCopyFinished())
@@ -93,12 +379,15 @@ class GameManager
         updater_t.start();
     }
 
+    @Override
     public void update()
     {
         if(updater_t.isAlive() || updater.isCopyFinished())
             return;
 
         cells = game.getCellDump();
+        facesMemoList = makeCellFaces(cells);
+        adjustFacePositions();
 
         updater.setCopyFinished(true);
     }
@@ -111,8 +400,10 @@ class GameManager
             return;
         }
 
-        game.addCell(new Cell(p.subtract(game.getOrigin())));
+        game.addCell(new Cell(p));
         cells = game.getCellDump();
+        facesMemoList = makeCellFaces(cells);
+        adjustFacePositions();
     }
 
     public void removeCell(Point p)
@@ -123,111 +414,102 @@ class GameManager
             return;
         }
 
-        game.removeCellAt(p.subtract(game.getOrigin()));
+        game.removeCellAt(p);
         cells = game.getCellDump();
+        facesMemoList = makeCellFaces(cells);
+        adjustFacePositions();
     }
 
-	private static void renderQuad(Point v1, Point v2, Point v3, Point v4)
-	{
-		GL11.glVertex3i(v4.x * boxLength, v4.y * boxLength, v4.z * boxLength);
-		GL11.glVertex3i(v3.x * boxLength, v3.y * boxLength, v3.z * boxLength);
-		GL11.glVertex3i(v2.x * boxLength, v2.y * boxLength, v2.z * boxLength);
-		GL11.glVertex3i(v1.x * boxLength, v1.y * boxLength, v1.z * boxLength);
-	}
-
-	private static void renderLine(Point v1, Point v2)
-	{
-		GL11.glVertex3i(v1.x * boxLength, v1.y * boxLength, v1.z * boxLength);
-		GL11.glVertex3i(v2.x * boxLength, v2.y * boxLength, v2.z * boxLength);
-	}
-
-	public static void renderBox(Point p, float r, float g, float b)
-	{
-		GL11.glColor3f(r, g, b);
-		GL11.glBegin(GL11.GL_QUADS);
-			for(Point[] ps : boxOffsets) // this used to be a reversed for loop
-				renderQuad(p.add(ps[0]), p.add(ps[1]), p.add(ps[2]), p.add(ps[3]));
-		GL11.glEnd();
-
-		GL11.glColor3f(0.2f, 0.2f, 0.2f);
-		for(Point[] ps : boxOffsets)
-		{
-			GL11.glBegin(GL11.GL_LINES);
-				renderLine(p.add(ps[0]), p.add(ps[1]));
-				renderLine(p.add(ps[1]), p.add(ps[2]));
-				renderLine(p.add(ps[2]), p.add(ps[3]));
-				renderLine(p.add(ps[3]), p.add(ps[0]));
-			GL11.glEnd();
-		}
-	}
-
-    public Point toGridCoords(float x, float y, float z)
-    {
-        int x_ = (int)Math.floor(x / boxLength);
-        int y_ = (int)Math.floor(y / boxLength);
-        int z_ = (int)Math.floor(z / boxLength);
-
-        Point p_ = new Point(x_, y_, z_);
-
-        return p_;
-    }
-
-	private void renderCellBox(Point p, float age)
-	{
-        renderBox(p, 1.0f / age, 1.0f / age, 1.0f);
-	}
-
+    @Override
     public void render()
     {
-        for(Cell c : cells)
+        for(Face f : facesMemoList)
         {
-            renderCellBox(game.getOrigin().add(c.position), c.age);
+            f.renderFace();
+            f.renderBorder();
         }
     }
+
+    private void adjustFacePositions()
+    {
+        //for(Face f : facesMemoList)
+        //    f.move(game.getOrigin());
+    }
+}
+
+interface Viewer
+{
+    
 }
  
-public class Game 
+public class Game // TODO split up this class some more. As it is ~600 lines of code, it ressembles too much a God Object, and is too much like an OOP-antipattern
 {
-    /** Game title */
     public static final String GAME_TITLE = "Game of Life 3D by Alexandre Laporte & Jacob Errington";
  
-    /** Desired frame time */
-    private static final int FRAMERATE = 60;
+    /** The framerate of the display. At 60 I get weird graphical artifacts with certain structures, so I've lowered it to 40, where these aren't visible. */
+    private static final int FRAMERATE = 40;
 
+    /** The number of window frames that must go by before the next game frame is displayed in autoupdate mode. */
     private static final int autoUpdateRate = 45; // number of frames before the game is updated, if autoupdate is enabled (otherwise updating is done by pressing space)
 
-    private static boolean autoUpdateMode = false;
-	private static boolean spinMode       = false;
-    private static boolean editMode       = false;
-    private static float   editArmLength  = 200f;
-	private static float   spinSpeed      = 0.15f;
+    private static boolean autoUpdateMode = false; // TODO all this stuff about modes should be in separate, related classes that alter/enhance the default behaviour
+	private static boolean spinMode       = false; // Whether spin mode is active. A flashy feature that centers the lookat point on the centre of the configuration and spins the camera around it.
+    private static boolean editMode       = false; // Whether the edit mode block cursor is visible and blocks can be added to the current configuration by clicking.
+    private static boolean recording = false, playing = false; // whether the current sequence of configurations is being recorded to a file, and whether the current sequence of configurations is being played from a file.
+    private static boolean showHUD = true; // Whether or not a heads-up display is visible. TODO get HUD to work!
 
+    /** How far away the block cursor is in edit mode. */
+    private static float   editArmLength  = 4 * Face.boxLength;
+
+    /** How quickly the camera spins when in spin mode, in radians. */
+	private static float   spinSpeed      = 0.15f; // TODO get spin mode to work!
+
+    /** Represents the number of literal, window frames that have gone by.
+     * Used to determine when to go to the next game frame (i.e. configuration of cells.)
+     */
     private static long frameN = 0;
  
-    /** Exit the game */
+    // whether or not execution is over. (Program closes when set to true.)
     private static boolean finished;
  
-    public static final float maxSpeed = 40;
-    public static final float minSpeed = 10;
+    /** The maximum (default) speed of the viewer when moving is equal to one block per frame. */
+    public static final float maxSpeed = Face.boxLength;
 
+    /** The minimum speed, which is accessed by holding down shift and moving, is equal to one fifth of a block per frame. */
+    public static final float minSpeed = Face.boxLength / 5f;
+
+    /** The parameters of the viewer, such as its location in the world and its camera angle. 
+     * Radius is a special internal value used to compute the location of the observation point.
+     * The observation point is guaranteed to be radius distance away from the viewer location.
+     * Making the radius larger will make camera panning smoother, but slower.
+     * Theta is the angle of the camera in the x-z plane, whereas phi is how far up and down the camera is pointing.
+     */
     private static float eyeX   = 0, 
                          eyeY   = 0, 
-                         eyeZ   = -20, 
-                         theta  = 0,
+                         eyeZ   = 0, 
+                         theta  = (float)Math.PI, //looking backwards initially. 
                          phi    = 0,
                          radius = 200,
                          speed  = maxSpeed; 
 
+    /** Dimensions of the screen. */
     private static int w = 1024, h = 600;
+
+    /** Used to compute changes to theta and phi based on mouse movement. */
     private static int lastMouseX = 0, lastMouseY = 0;
 
+    /** The location (in grid coordinates) of the block cursor, which is visible only in edit mode. */
     private static Point cellCursor = new Point();
 
-    // shaders get stored in here... somehow.
+    /** The custom vertex and fragment shader programs. (UNUSED) */
     private static int program = 0;
 
-    private static GameManager gm;
- 
+    /** The internal game manager, which generally wraps one or more LifeGame objects and makes them renderable. */
+    private static GameManager gm = null;
+
+    /** The file chooser dialog box used to open and save patterns and recordings. */
+    private static JFileChooser fc = new JFileChooser();
+
     /**
      * Application init
      * @param args Commandline args
@@ -236,70 +518,72 @@ public class Game
     {
         try 
         {
-            if(args.length > 0)
+            for(int i = 0; i < args.length; i++)
             {
-                if(args[0].equals("-")) // allow specifying a file on the command line. If that file is '-', then allow reading from stdin
-                    gm = new GameManager(LifeGame.fromFile(System.in));
-				else if(args[0].equals("-random"))
-				{
-					if(args.length == 3)
-					{
-						int n = Integer.parseInt(args[1]);
-						int range = Integer.parseInt(args[2]);
-
-						gm = new GameManager(LifeGame.fromRandom(n, range));
-					}
-					else
-					{
-						JOptionPane.showMessageDialog(null, "Invalid initial configuration options. Exiting...", "Fatal Error", JOptionPane.ERROR_MESSAGE);
-						System.exit(1);
-					}
-				}
-                else if(args[0].equals("-rect-prism"))
+                if(args[i].equals("-")) // allow specifying a file on the command line. If that file is '-', then allow reading from stdin
                 {
-                    if(args.length == 4)
-                    {
-                        int x = Integer.parseInt(args[1]);
-                        int y = Integer.parseInt(args[2]);
-                        int z = Integer.parseInt(args[3]);
+                    if(gm == null)
+                        gm = new LiveGameManager(LifeGame.fromFile(System.in));
+                    else
+                        JOptionPane.showMessageDialog(null, "Input data already specified. Ignoring subsequent specification.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+                else if(args[i].equals("-random"))
+				{
+                    int n = Integer.parseInt(args[i + 1]);
+                    int range = Integer.parseInt(args[i + 2]);
 
-                        gm = new GameManager(LifeGame.fromPrism(x, y, z));
+                    gm = new LiveGameManager(LifeGame.fromRandom(n, range));
+                    i += 2;
+				}
+                else if(args[i].equals("-recording"))
+                {
+                    if(args[i + 1].equals("-"))
+                    {
+                        gm = new RecordedGameManager(LifeGame.fromRecording(System.in));
+                        playing = true;
                     }
                     else
                     {
-                        JOptionPane.showMessageDialog(null, 
-                                                      "Invalid prism configuration options. Exiting...", 
-                                                      "Fatal Error", 
-                                                      JOptionPane.ERROR_MESSAGE);
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        gm = new GameManager(LifeGame.fromFile(new FileInputStream(args[0])));
-                    }
-                    catch(FileNotFoundException e)
-                    {
-                        JOptionPane.showMessageDialog(null, 
-                                                      "File not found: " + e.getMessage(), 
-                                                      "Fatal Error", 
-                                                      JOptionPane.ERROR_MESSAGE);
-                        System.exit(1);
-                    }
-                }
-            }
-            else // if not file is specified on the command line, then prompt the user for a file.
-            {
-                JFileChooser fc = new JFileChooser();
-                int retv = fc.showOpenDialog(null);
+                        try
+                        {
+                            FileInputStream fis = new FileInputStream(args[i + 1]);
 
-                if(retv == JFileChooser.APPROVE_OPTION)
+                            if(gm == null)
+                            {
+                                gm = new RecordedGameManager(LifeGame.fromRecording(fis));
+                                playing = true;
+                            }
+                            else
+                                JOptionPane.showMessageDialog(null, "Input data already specified. Ignoring subsequent specification.", "Error", JOptionPane.ERROR_MESSAGE);
+
+                        }
+                        catch(FileNotFoundException e)
+                        {
+                            JOptionPane.showMessageDialog(null, "Recording file not found.", "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                            System.exit(1);
+                        }
+                    }
+
+                    i++;
+                }
+                else if(args[i].equals("-rect-prism"))
+                {
+                    int x = Integer.parseInt(args[i + 1]);
+                    int y = Integer.parseInt(args[i + 2]);
+                    int z = Integer.parseInt(args[i + 3]);
+
+                    gm = new LiveGameManager(LifeGame.fromPrism(x, y, z));
+
+                    i += 3;
+                }
+                else
                 {
                     try
                     {
-                        FileInputStream fis = new FileInputStream(fc.getSelectedFile());
-                        gm = new GameManager(LifeGame.fromFile(fis));
+                        if(gm == null)
+                            gm = new LiveGameManager(LifeGame.fromFile(new FileInputStream(args[0])));
+                        else
+                            JOptionPane.showMessageDialog(null, "Input data already specified. Ignoring subsequence specification.", "Error", JOptionPane.ERROR_MESSAGE);
                     }
                     catch(FileNotFoundException e)
                     {
@@ -310,15 +594,11 @@ public class Game
                         System.exit(1);
                     }
                 }
-                else
-                {
-                    JOptionPane.showMessageDialog(null, 
-                                                  "No pattern specified. Exiting...", 
-                                                  "Fatal Error", 
-                                                  JOptionPane.ERROR_MESSAGE);
-                    System.exit(1);
-                }
             }
+
+
+            if(gm == null) // if no file is specified on the command line, then open an empty game. The user can load a pattern or recording later with keyboard commands.
+                gm = new LiveGameManager(new LifeGame());
 
             init();
             run();
@@ -360,7 +640,7 @@ public class Game
         }
         catch(Exception e)
         {
-            System.out.println("Error setting up display");
+            System.err.println("Error setting up display.");
             System.exit(1);
         }
 
@@ -464,7 +744,7 @@ public class Game
     /**
      * Do all calculations, handle input, etc.
      */
-    private static void logic() 
+    private static void logic()  // TODO refactor into something less that 250LOC !
     {
         if (Keyboard.isKeyDown(Keyboard.KEY_ESCAPE)) 
         {
@@ -476,21 +756,39 @@ public class Game
         {
             int key = Keyboard.getEventKey();
             boolean state = Keyboard.getEventKeyState();
+            char keyChar = Keyboard.getEventCharacter();
+            int retv; // used by the filechooser
 
             if (!state) // key was released
 			{
                 switch (key)
                 {
                     case Keyboard.KEY_F:
-						JFileChooser fc = new JFileChooser();
-						int retv = fc.showOpenDialog(null);
+						retv = fc.showOpenDialog(null);
 
 						if(retv == JFileChooser.APPROVE_OPTION)
 						{
 							try
 							{
 								FileInputStream fis = new FileInputStream(fc.getSelectedFile());
-								gm = new GameManager(LifeGame.fromFile(fis));
+								gm = new LiveGameManager(LifeGame.fromFile(fis));
+								autoUpdateMode = false;
+							}
+							catch(FileNotFoundException e)
+							{
+								JOptionPane.showMessageDialog(null, "File not found: " + e.getMessage(), "Fatal Error", JOptionPane.ERROR_MESSAGE);
+							}
+						}
+						break;
+                    case Keyboard.KEY_R:
+						retv = fc.showOpenDialog(null);
+
+						if(retv == JFileChooser.APPROVE_OPTION)
+						{
+							try
+							{
+								FileInputStream fis = new FileInputStream(fc.getSelectedFile());
+								gm = new RecordedGameManager(LifeGame.fromRecording(fis));
 								autoUpdateMode = false;
 							}
 							catch(FileNotFoundException e)
@@ -502,18 +800,83 @@ public class Game
 					case Keyboard.KEY_P:
 						autoUpdateMode = !autoUpdateMode;
 						break;
-					case Keyboard.KEY_1:
-						spinMode = !spinMode;
-						break;
                     case Keyboard.KEY_B:
-                        editMode = !editMode;
-                        System.err.printf("Edit mode: %s\n", new Boolean(editMode).toString());
+                        if(!playing)
+                        {
+                            editMode = !editMode;
+                            //autoUpdateMode = false; // pause the game if it's running?
+                            System.err.printf("Edit mode: %s\n", new Boolean(editMode).toString());
+                        }
                         break;
 					case Keyboard.KEY_SPACE:
 						gm.updateGame();
 						break;
                     case Keyboard.KEY_LSHIFT:
                         speed = maxSpeed;
+                        break;
+                    case Keyboard.KEY_BACK: // clear game
+                        playing = false;
+                        autoUpdateMode = false;
+                        gm = new LiveGameManager(new LifeGame());
+                        break;
+                    case Keyboard.KEY_X: // a debug functionality
+                        System.err.print(gm.getGame().toString());
+                        break;
+                    case Keyboard.KEY_RETURN: // save game to file
+						retv = fc.showSaveDialog(null);
+
+						if(retv == JFileChooser.APPROVE_OPTION)
+						{
+							try
+							{
+                                PrintStream ps = new PrintStream(fc.getSelectedFile());
+                                ps.print(gm.getGame().toString());
+                                ps.close();
+							}
+							catch(FileNotFoundException e)
+							{
+								JOptionPane.showMessageDialog(null, "File not found: " + e.getMessage(), "Fatal Error", JOptionPane.ERROR_MESSAGE);
+							}
+						}
+                        break;
+                    case Keyboard.KEY_1:
+                        if(Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)) // shift means save
+                        {
+                            try
+                            {
+                                PrintStream ps = new PrintStream("save_1.txt");
+                                ps.print(gm.getGame().toString());
+                                ps.close();
+                            }
+                            catch(FileNotFoundException e)
+                            {
+                            }
+                        }
+                        else // loading a state
+                        {
+                            playing = false;
+                            autoUpdateMode = false;
+
+                            try
+                            {
+                                gm = new LiveGameManager(LifeGame.fromFile(new FileInputStream("save_1.txt")));
+                            }
+                            catch(FileNotFoundException e)
+                            {
+								JOptionPane.showMessageDialog(null, "Could not open temporary save file save_1.txt.", "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                            }
+                        }
+                        break;
+                    case Keyboard.KEY_ESCAPE:
+                        finished = true;
+                        return;
+                    case Keyboard.KEY_N: // bail out of a recording, into interactive mode
+                        if(playing)
+                        {
+                            playing = false;
+                            autoUpdateMode = false;
+                            gm = new LiveGameManager(gm.getGame());
+                        }
                         break;
 				}
 			}
@@ -538,10 +901,12 @@ public class Game
                 switch(mousebutton)
                 {
                     case 0: // left !
-                        gm.addNewCell(cellCursor);
+                        if(editMode && !playing)
+                            ((LiveGameManager)gm).addNewCell(cellCursor);
                         break;
                     case 1: // right !
-                        gm.removeCell(cellCursor);
+                        if(editMode && !playing)
+                            ((LiveGameManager)gm).removeCell(cellCursor);
                         break;
                     case 2: // centre !
                         //System.err.printf("Mouse button 2 pressed.\n");
@@ -580,13 +945,9 @@ public class Game
 			}
 
 			if (Keyboard.isKeyDown(Keyboard.KEY_Q))
-			{
 				eyeY -= speed;
-			}
-			if (Keyboard.isKeyDown(Keyboard.KEY_E))
-			{
+            else if (Keyboard.isKeyDown(Keyboard.KEY_E))
 				eyeY += speed;
-			}
 
             // Side to side movement is just forwards/backwards movement with the trig functions switched
 			if (Keyboard.isKeyDown(Keyboard.KEY_A))
@@ -621,7 +982,7 @@ public class Game
         else if(phi < -(float)Math.PI / 2f)
             phi = -(float)Math.PI / 2f;
 
-        cellCursor = gm.toGridCoords(eyeX + editArmLength * (float)Math.sin(theta), eyeY + editArmLength * (float)Math.sin(phi), eyeZ + editArmLength * (float)Math.cos(theta));
+        cellCursor = Face.toGridCoords(eyeX + editArmLength * (float)Math.sin(theta), eyeY + editArmLength * (float)Math.sin(phi), eyeZ + editArmLength * (float)Math.cos(theta));
 
         if (autoUpdateMode)
         {
@@ -642,15 +1003,17 @@ public class Game
         // clear the screen and add depth buffering to avoid awkward overlapping of surfaces
         GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_STENCIL_BUFFER_BIT);
 		GL11.glClearDepth(10000f);
+
         GL11.glLoadIdentity();
 
 		if(spinMode)
 		{
             Point dim = gm.getDimensions();
             Point origin = gm.getOrigin();
-			float structCentreX = (float)origin.x + (float)dim.x / 2f * GameManager.boxLength;
-			float structCentreY = (float)origin.y + (float)dim.y / 2f * GameManager.boxLength;
-			float structCentreZ = (float)origin.z + (float)dim.z / 2f * GameManager.boxLength;
+
+			float structCentreX = ((float)origin.x + (float)dim.x / 2f) * Face.boxLength;
+			float structCentreY = ((float)origin.y + (float)dim.y / 2f) * Face.boxLength;
+			float structCentreZ = ((float)origin.z + (float)dim.z / 2f) * Face.boxLength;
 
 			float distX = eyeX - structCentreX;
 			float distY = eyeY - structCentreY;
@@ -666,16 +1029,27 @@ public class Game
 			GLU.gluLookAt(eyeX, eyeY, eyeZ, eyeX + radius * (float)Math.sin(theta), eyeY + radius * (float)Math.sin(phi), eyeZ + radius * (float)Math.cos(theta), 0, 1, 0);
  
         if(editMode)
-        {
             GameManager.renderBox(cellCursor, 0.5f, 1.0f, 0.5f);
-        }
 
         gm.render();
+
+        GL11.glPushMatrix();
+
+        if(showHUD) // TODO get HUD to work.
+        {
+            GL11.glLoadIdentity();
+            GL11.glOrtho(-300, 300, -300, 300, 100, -100);
+
+            GL11.glBegin(GL11.GL_LINES);
+                GL11.glVertex3f(-200, -200, 5f);
+                GL11.glVertex3f(200, 200, 5f);
+            GL11.glEnd();
+        }
  
         GL11.glPopMatrix();
     }
 
-/*
+    /**
     * With the exception of syntax, setting up vertex and fragment shaders
     * is the same.
     * @param the name and path to the vertex shader

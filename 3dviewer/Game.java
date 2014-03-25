@@ -392,6 +392,9 @@ class LiveGameManager extends GameManager
         updater.setCopyFinished(true);
     }
 
+    /** Add a new Cell to the underlying LifeGame object. 
+     * @param p The (absolute, i.e. relative to (0, 0, 0)) coordinates of the cell to be created.
+     */
     public void addNewCell(Point p)
     {
         if(updater_t.isAlive() || !updater.isCopyFinished())
@@ -400,7 +403,7 @@ class LiveGameManager extends GameManager
             return;
         }
 
-        game.addCell(new Cell(p));
+        game.addCell(new Cell(game.rel(p)));
         cells = game.getCellDump();
         facesMemoList = makeCellFaces(cells);
         adjustFacePositions();
@@ -414,7 +417,7 @@ class LiveGameManager extends GameManager
             return;
         }
 
-        game.removeCellAt(p);
+        game.removeCellAt(game.rel(p));
         cells = game.getCellDump();
         facesMemoList = makeCellFaces(cells);
         adjustFacePositions();

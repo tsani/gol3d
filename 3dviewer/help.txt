@@ -1,0 +1,35 @@
+GAME OF LIFE 3D
+===============
+
+By: Jacob Errington and Alexandre Laporte
+
+Mechanics
+=========
+
+A ruleset is given by a four-dimensional vector R, blah.
+
+Basic Controls
+==============
+
+Moving the viewpoint: 
+* Press and hold W, A, S, D to move in the x-z plane, and Q, E to descend, ascend on the Y axis.
+* Move the mouse to change the orientation of the camera.
+
+Globally modifying the configuration:
+* Press F to select a pattern file and switch to Normal Mode.
+* Press R to select a recording file and switch to Playing Mode.
+* Press Return to save the current configuration to a file.
+* Press Backspace to erase the current configuration and switch to Normal Mode.
+
+The simulator is modular, i.e. there are several modes that the user can be in. Some modes can be 
+used simultaneously, whereas other combinations of modes are exclusive.
+If the simulator is run with no arguments on the command line, then it is by default in Normal Mode.
+The other modes are Recording Mode, Playing Mode, and Edit Mode.
+
+Normal Mode Features:
+* Edit Mode is accessible only from Normal Mode.
+* Press B while in Normal Mode to switch to Edit Mode.
+
+Playing Mode Features:
+* Edit Mode is inaccessible from Playing Mode.
+* Press N while in playing mode to "bail out" into Normal Mode, but preserving the current configuration of cells.

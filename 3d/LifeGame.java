@@ -398,7 +398,7 @@ public class LifeGame
 
         topLeft = mn;
 
-        System.err.printf("New origin at (%s).\n", mn.toString());
+        //System.err.printf("New origin at (%s).\n", mn.toString());
 
         state = newState;
     }

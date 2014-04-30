@@ -793,6 +793,7 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
 								FileInputStream fis = new FileInputStream(fc.getSelectedFile());
 								gm = new RecordedGameManager(LifeGame.fromRecording(fis));
 								autoUpdateMode = false;
+                                playing = true;
 							}
 							catch(FileNotFoundException e)
 							{

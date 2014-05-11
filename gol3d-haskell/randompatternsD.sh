@@ -1,5 +1,7 @@
 #!/usr/bin/zsh
 
+# A script to generate a bunch of patterns with a given density in a given bounding box using the DensityGen program.
+
 if (( $# < 5 ))
 then
     echo "Insufficient parameters." >&2
@@ -23,7 +25,7 @@ mkdir -p $odir
 
 for (( d=$s ; d < 1.0; d+=$s ))  
 do 
-    for (( i=0; i < 5; i++ )) 
+    for (( i=0; i < $n; i++ )) 
     do
         ./DensityGen $d $x $y $z > "$odir/${d}-${i}.pat"
     done

@@ -49,7 +49,10 @@ class LifeGameManager
                 line.add(lineScanner.next());
 
             if(line.size() == 0)
-                continue;
+                if(interactive)
+                    continue;
+                else 
+                    System.exit(exitCode);
 
             if(line.get(0).equals("c") || line.get(0).equals("create"))
             {
@@ -167,6 +170,8 @@ class LifeGameManager
                 System.err.printf("Unknown command: %s.\n", line.get(0));
             }
         }
+
+        System.exit(exitCode);
     }
 }
 
@@ -207,7 +212,9 @@ public class LifeCLI
                     else
                         try
                         {
-                            scriptIn = new FileInputStream(args[i+1]);
+                            String sin = args[i+1];
+        //                    System.err.printf("Will be reading script from %s.\n", sin);
+                            scriptIn = new FileInputStream(sin);
                         }
                         catch(FileNotFoundException e)
                         {
@@ -223,7 +230,7 @@ public class LifeCLI
             System.exit(2);
         }
 
-        man = new LifeGameManager(gameIn == null ? new LifeGame() : LifeGame.fromFile(gameIn), scriptIn, true);
+        man = new LifeGameManager(gameIn == null ? new LifeGame() : LifeGame.fromFile(gameIn), scriptIn, interactive);
 
         man.run();
     }

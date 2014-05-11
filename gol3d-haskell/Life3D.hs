@@ -19,6 +19,9 @@ vec3mult k (x1, x2, x3)           = (k * x1, k * x2, k * x3)
 vec3negate (x1, x2, x3)           = (-x1, -x2, -x3)
 vec3subtract x y                  = x `vec3add` vec3negate y
 
+minimalPoint (x1, x2, x3) (y1, y2, y3) = (min x1 y1, min x2 y2, min x3 y3)
+maximalPoint (x1, x2, x3) (y1, y2, y3) = (max x1 y1, max x2 y2, max x3 y3)
+
 data Cell = Cell { cellAge      :: Integer
                  , cellPosition :: Vec3i
                  } 
@@ -85,7 +88,6 @@ mkSoup density cubeDim r = foldr randomPrune ([], r) fullCube
                                        then (p:ps, rng')
                                        else (ps, rng')
           
-
 fromCells :: Pattern -> CellMap
 fromCells = M.fromList . map (\c -> (cellPosition c, c))
 

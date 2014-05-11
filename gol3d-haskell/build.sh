@@ -1,5 +1,7 @@
 #!/usr/bin/zsh
 
+# Basically a poor man's makefile.
+
 if [[ $1 = "clean" ]]
 then 
     rm *.o *.hi

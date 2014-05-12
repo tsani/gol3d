@@ -1,6 +1,7 @@
 module Life3D where
 
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List
 import Data.List.Split
 import Data.Maybe
@@ -13,6 +14,7 @@ type CellMap = M.Map Vec3i Cell
 type Pattern = [Cell]
 type Recording = [Pattern]
 type NeighbourMatrix = M.Map Vec3i Integer
+type Chromosome = [Int]
 
 vec3add (x1, x2, x3) (y1, y2, y3) = (x1 + y1, x2 + y2, x3 + y3) -- vector addition
 vec3mult k (x1, x2, x3)           = (k * x1, k * x2, k * x3)
@@ -21,6 +23,9 @@ vec3subtract x y                  = x `vec3add` vec3negate y
 
 minimalPoint (x1, x2, x3) (y1, y2, y3) = (min x1 y1, min x2 y2, min x3 y3)
 maximalPoint (x1, x2, x3) (y1, y2, y3) = (max x1 y1, max x2 y2, max x3 y3)
+
+boundingBox :: [Vec3i] -> Vec3i
+boundingBox = foldl' maximalPoint (0,0,0)
 
 data Cell = Cell { cellAge      :: Integer
                  , cellPosition :: Vec3i
@@ -42,6 +47,23 @@ data SurvivalResult = Survival | Death | Birth
 
 -- |The standard ruleset for 3D Game of Life, which supports analogous gliders and blinkers, among other interesting things.
 standardRuleset = Ruleset 6 6 7 5
+
+pointsBetween :: (Vec3i, Vec3i) -> [Vec3i]
+pointsBetween ((loX,loY,loZ),(hiX,hiY,hiZ)) = do
+                                              xs <- [loX..hiX]
+                                              ys <- [loY..hiY]
+                                              zs <- [loZ..hiZ]
+                                              return (xs,ys,zs)
+
+toChromosome :: [Vec3i] -> [Int]
+toChromosome pts = map (\pt -> if S.member pt ptSet then 1 else 0) (pointsBetween ((0,0,0),bbox))
+    where bbox = boundingBox pts
+          ptSet = S.fromList pts
+
+fromChromosome :: [Int] -> Vec3i -> [Vec3i]
+fromChromosome chr bbox = map (flip whereIs bbox . snd) $ filter ((/= 0) . fst) $ (enumerate chr)
+    where enumerate xs = zip xs [0..]
+          whereIs i (x,y,z) = (i `mod` x, (i `mod` (y * x)) `div` x, i `div` (x * y))
 
 -- |All 26 vectors that need to be added to a given point to produce its regular, cubic-lattice neighbours.
 neighbourOffsets :: [Vec3i]

@@ -46,7 +46,7 @@ class GameUpdater implements Runnable
 
 class Face
 {
-    public static final int boxLength = 50;
+    public static final float boxLength = 1;
 
     public static Point toGridCoords(float x, float y, float z)
     {
@@ -74,10 +74,10 @@ class Face
     {
         GL11.glColor3f(r, g, b);
         GL11.glBegin(GL11.GL_POLYGON);
-            GL11.glVertex3i(vertices[3].x * boxLength, vertices[3].y * boxLength, vertices[3].z * boxLength);
-            GL11.glVertex3i(vertices[2].x * boxLength, vertices[2].y * boxLength, vertices[2].z * boxLength);
-            GL11.glVertex3i(vertices[1].x * boxLength, vertices[1].y * boxLength, vertices[1].z * boxLength);
-            GL11.glVertex3i(vertices[0].x * boxLength, vertices[0].y * boxLength, vertices[0].z * boxLength);
+            GL11.glVertex3f(vertices[3].x * boxLength, vertices[3].y * boxLength, vertices[3].z * boxLength);
+            GL11.glVertex3f(vertices[2].x * boxLength, vertices[2].y * boxLength, vertices[2].z * boxLength);
+            GL11.glVertex3f(vertices[1].x * boxLength, vertices[1].y * boxLength, vertices[1].z * boxLength);
+            GL11.glVertex3f(vertices[0].x * boxLength, vertices[0].y * boxLength, vertices[0].z * boxLength);
         GL11.glEnd();
     }
 
@@ -87,7 +87,7 @@ class Face
         GL11.glBegin(GL11.GL_LINE_LOOP);
             GL11.glColor3f(0.2f, 0.2f, 0.2f);
             for(int i = 0; i < vertices.length; i++)
-                GL11.glVertex3i(vertices[i].x * boxLength, vertices[i].y * boxLength, vertices[i].z * boxLength);
+                GL11.glVertex3f(vertices[i].x * boxLength, vertices[i].y * boxLength, vertices[i].z * boxLength);
         GL11.glEnd();
     }
 
@@ -462,7 +462,7 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
     private static boolean showHUD = true; // Whether or not a heads-up display is visible. TODO get HUD to work!
 
     /** How far away the block cursor is in edit mode. */
-    private static float   editArmLength  = 4 * Face.boxLength;
+    private static int     editArmLength  = 4; 
 
     /** How quickly the camera spins when in spin mode, in radians. */
 	private static float   spinSpeed      = 0.15f; // TODO get spin mode to work!
@@ -492,14 +492,14 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
                          eyeZ   = 0, 
                          theta  = (float)Math.PI, //looking backwards initially. 
                          phi    = 0,
-                         radius = 200,
+                         radius = 140,
                          speed  = maxSpeed; 
 
     /** Dimensions of the screen. */
     private static int w = 1024, h = 600;
 
     /** Used to compute changes to theta and phi based on mouse movement. */
-    private static int lastMouseX = 0, lastMouseY = 0;
+    private static float lastMouseX = 0, lastMouseY = 0;
 
     /** The location (in grid coordinates) of the block cursor, which is visible only in edit mode. */
     private static Point cellCursor = new Point();
@@ -927,24 +927,34 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
 		{
 			if(Display.isActive())
 			{
-				int mx = Mouse.getX(), my = Mouse.getY();
-				int mdx = mx - lastMouseX, mdy = my - lastMouseY;
+				float mx = Mouse.getX(), my = Mouse.getY();
+				float mdx = mx - lastMouseX, mdy = my - lastMouseY;
+
+                if(mdx != 0f || mdy != 0f)
+                    System.err.printf("X: %f    Y: %f\n", mx, my);
 
 				theta += -mdx / radius;
 				phi   += mdy / radius;
 
+                if(Keyboard.isKeyDown(Keyboard.KEY_RIGHT))
+                    theta += 0.01;
+                if(Keyboard.isKeyDown(Keyboard.KEY_LEFT))
+                    theta -= 0.01;
+                if(Keyboard.isKeyDown(Keyboard.KEY_UP))
+                    phi += 0.01;
+                if(Keyboard.isKeyDown(Keyboard.KEY_DOWN))
+                    phi -= 0.01;
+
 				if(mdx != 0.0f)
 				{
-					if(theta > (float)Math.PI * 2f)
-						theta -= (float)Math.PI * 2f;
-					else if(theta < 0f)
-						theta += (float)Math.PI * 2f;
-
-                    //System.err.printf("Theta = %f\n", theta);
+                    while(theta > 2 * (float)Math.PI)
+                        theta -= 2 * (float)Math.PI;
 				}
                 if(mdy != 0.0f)
                 {
-                    //System.err.printf("Phi = %f\n", phi);
+                    phi = Math.min(phi, (float)Math.PI/2f);
+                    phi = Math.max(phi, -(float)Math.PI/2f);
+                    //System.err.printf("mdy: %f\n", mdy);
                 }
 			}
 
@@ -978,13 +988,8 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
 			}
 		}
 
-		if(Display.isActive()) // Only centre the mouse if the window is focused!
-			Mouse.setCursorPosition(w / 2, h / 2);
-
-        if(phi > (float)Math.PI / 2) // just making sure phi isn't allowed to go round and round
-            phi = (float)Math.PI / 2f;
-        else if(phi < -(float)Math.PI / 2f)
-            phi = -(float)Math.PI / 2f;
+	//	if(Display.isActive()) // Only centre the mouse if the window is focused!
+	//		Mouse.setCursorPosition(w / 2, h / 2);
 
         cellCursor = Face.toGridCoords(eyeX + editArmLength * (float)Math.sin(theta), eyeY + editArmLength * (float)Math.sin(phi), eyeZ + editArmLength * (float)Math.cos(theta));
 

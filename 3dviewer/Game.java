@@ -224,7 +224,12 @@ abstract class GameManager implements GameMode
 
         for(Cell c : cs)
             for(Face face : getBoxFacesFrom(c.position, 1f / c.age, 1f / c.age, 1f))
+            {
+                System.err.print(".");
                 faces.add(face);
+            }
+
+        System.err.println();
 
         return faces;
     }
@@ -235,6 +240,7 @@ abstract class GameManager implements GameMode
     abstract public void updateGame();
     abstract public void update();
     abstract public void render();
+    abstract public boolean isCellAt(Point p);
 }
 
 class RecordedGameManager extends GameManager
@@ -248,7 +254,10 @@ class RecordedGameManager extends GameManager
         ArrayList<HashSet<Face>> faces = new ArrayList<HashSet<Face>>();
 
         for(Collection<Cell> cs : states)
+        {
             faces.add(makeCellFaces(cs));
+        }
+        System.err.println();
 
         return faces;
     }
@@ -315,6 +324,12 @@ class RecordedGameManager extends GameManager
     public void update()
     {
         // no-op ?
+    }
+
+    @Override
+    public boolean isCellAt(Point p)
+    {
+        return subgames.get(index).isCellAt(p);
     }
 
     @Override
@@ -424,6 +439,18 @@ class LiveGameManager extends GameManager
     }
 
     @Override
+    public boolean isCellAt(Point p)
+    {
+        if(updater_t.isAlive() || !updater.isCopyFinished())
+        {
+            System.err.printf("Can't query cell matrix while update is in progress!\n");
+            return false;
+        }
+
+        return game.isCellAt(p);
+    }
+
+    @Override
     public void render()
     {
         for(Face f : facesMemoList)
@@ -440,20 +467,20 @@ class LiveGameManager extends GameManager
     }
 }
 
-interface Viewer
-{
-    
-}
- 
+//class RandomEternalGameManager extends LiveGameManager
+//{
+//    // do something cool
+//}
+
 public class Game // TODO split up this class some more. As it is ~600 lines of code, it ressembles too much a God Object, and is too much like an OOP-antipattern
 {
     public static final String GAME_TITLE = "Game of Life 3D by Alexandre Laporte & Jacob Errington";
  
     /** The framerate of the display. At 60 I get weird graphical artifacts with certain structures, so I've lowered it to 40, where these aren't visible. */
-    private static final int FRAMERATE = 40;
+    private static final int FRAMERATE = 60;
 
     /** The number of window frames that must go by before the next game frame is displayed in autoupdate mode. */
-    private static final int autoUpdateRate = 45; // number of frames before the game is updated, if autoupdate is enabled (otherwise updating is done by pressing space)
+    private static final int autoUpdateRate = 30; // number of frames before the game is updated, if autoupdate is enabled (otherwise updating is done by pressing space)
 
     private static boolean autoUpdateMode = false; // TODO all this stuff about modes should be in separate, related classes that alter/enhance the default behaviour
 	private static boolean spinMode       = false; // Whether spin mode is active. A flashy feature that centers the lookat point on the centre of the configuration and spins the camera around it.
@@ -476,10 +503,10 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
     private static boolean finished;
  
     /** The maximum (default) speed of the viewer when moving is equal to one block per frame. */
-    public static final float maxSpeed = Face.boxLength;
+    public static final float maxSpeed = Face.boxLength / 5f;
 
     /** The minimum speed, which is accessed by holding down shift and moving, is equal to one fifth of a block per frame. */
-    public static final float minSpeed = Face.boxLength / 5f;
+    public static final float minSpeed = Face.boxLength / 10f;
 
     /** The parameters of the viewer, such as its location in the world and its camera angle. 
      * Radius is a special internal value used to compute the location of the observation point.
@@ -492,7 +519,7 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
                          eyeZ   = 0, 
                          theta  = (float)Math.PI, //looking backwards initially. 
                          phi    = 0,
-                         radius = 140,
+                         radius = 300,
                          speed  = maxSpeed; 
 
     /** Dimensions of the screen. */
@@ -813,7 +840,15 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
                         }
                         break;
 					case Keyboard.KEY_SPACE:
-						gm.updateGame();
+                        if(editMode && !playing)
+                        {
+                            if(gm.isCellAt(cellCursor))
+                                ((LiveGameManager)gm).removeCell(cellCursor);
+                            else
+                                ((LiveGameManager)gm).addNewCell(cellCursor);
+                        }
+                        else
+                            gm.updateGame();
 						break;
                     case Keyboard.KEY_LSHIFT:
                         speed = maxSpeed;
@@ -937,9 +972,9 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
 				phi   += mdy / radius;
 
                 if(Keyboard.isKeyDown(Keyboard.KEY_RIGHT))
-                    theta += 0.01;
-                if(Keyboard.isKeyDown(Keyboard.KEY_LEFT))
                     theta -= 0.01;
+                if(Keyboard.isKeyDown(Keyboard.KEY_LEFT))
+                    theta += 0.01;
                 if(Keyboard.isKeyDown(Keyboard.KEY_UP))
                     phi += 0.01;
                 if(Keyboard.isKeyDown(Keyboard.KEY_DOWN))
@@ -988,8 +1023,8 @@ public class Game // TODO split up this class some more. As it is ~600 lines of 
 			}
 		}
 
-	//	if(Display.isActive()) // Only centre the mouse if the window is focused!
-	//		Mouse.setCursorPosition(w / 2, h / 2);
+
+			Mouse.setCursorPosition(w / 2, h / 2);
 
         cellCursor = Face.toGridCoords(eyeX + editArmLength * (float)Math.sin(theta), eyeY + editArmLength * (float)Math.sin(phi), eyeZ + editArmLength * (float)Math.cos(theta));
 

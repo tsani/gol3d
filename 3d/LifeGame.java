@@ -279,6 +279,16 @@ public class LifeGame
         state.remove(p);
     }
 
+    public boolean isCellAt(Point p)
+    {
+        for(Cell c : state.values())
+            if(c.position.equals(p))
+                return true;
+
+        System.err.printf("No cell at %s\n", p.toString());
+        return false;
+    }
+
     public Collection<Cell> getCellDump()
     {
         HashSet<Cell> dump = new HashSet<Cell>();
